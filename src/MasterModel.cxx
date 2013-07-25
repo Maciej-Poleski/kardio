@@ -8,6 +8,7 @@
 #include <string>
 #include <regex>
 #include <tuple>
+#include <functional>
 
 #include <boost/date_time/gregorian/greg_date.hpp>
 #include <boost/date_time/local_time/local_time.hpp>
@@ -15,6 +16,8 @@
 
 #include <QtCore/QDateTime>
 #include <QtGui/QColor>
+#include <QtGui/QImage>
+#include <QtGui/QPainter>
 
 #include "CompleteRecord.hxx"
 #include "DeprecatedRecord.hxx"
@@ -27,7 +30,7 @@ MasterModel::MasterModel(const std::string& timezoneInfoFile, QObject* parent):
     /* TODO:
      * Support selection of time zone
      */
-    //_timeZonePtr=_tzDatabase.time_zone_from_region("Europe/Warsaw");
+    _timeZonePtr=_tzDatabase.time_zone_from_region("Europe/Warsaw");
 }
 
 int MasterModel::columnCount(const QModelIndex& parent) const
@@ -286,6 +289,14 @@ void MasterModel::loadFromFile(const std::string & filename)
         }
         else if(isDate(line))
         {
+            auto newDate=parseDate(line);
+            if(!currentDate.is_not_a_date() && currentDate>newDate)
+                throw std::runtime_error("Current date ("+
+                                         boost::gregorian::to_iso_string(currentDate)+
+                                         ") is after new date ("+
+                                         boost::gregorian::to_iso_string(newDate)+
+                                         ")."
+                                         " It is not supported (now)");
             currentDate=parseDate(line);
         }
         else if(isMeasure(line))
@@ -303,5 +314,83 @@ void MasterModel::loadFromFile(const std::string & filename)
     } while(!in.eof());
     endResetModel();
 }
+
+static std::size_t getTimeSpan(
+    const std::vector<std::shared_ptr<Record>> &records,
+    const std::size_t minutesPerPixel)
+{
+    boost::local_time::local_date_time startTime=records.front()->localDatetime();
+    auto startDate=startTime.local_time().date();
+
+    boost::local_time::local_date_time endTime=records.back()->localDatetime();
+    auto endDate=endTime.local_time().date()+boost::gregorian::days(2); // TODO: improve aproximation
+
+    auto duration=endTime-startTime+boost::posix_time::hours(48);
+    return duration.total_seconds()/60/minutesPerPixel;
+}
+
+static void drawHorizontalLines(QImage &image,const std::size_t spacing,
+                                const std::size_t limit,
+                                std::function<std::size_t(std::size_t)> heightMapper)
+{
+    QPainter painter(&image);
+    painter.setPen(Qt::lightGray);
+    for(std::size_t h=spacing; h<limit; h+=spacing)
+    {
+        painter.drawLine(0,heightMapper(h),image.width(),heightMapper(h));
+    }
+}
+
+QImage MasterModel::getChartAsImage() const
+{
+    const std::size_t minutesPerPixel=15;
+    const std::size_t width=getTimeSpan(_records,minutesPerPixel);
+    const std::size_t height=400;
+    const std::size_t heightScale=2;
+    const auto mapHeight=[height,heightScale] (const std::size_t h) {
+        return height-1-h*heightScale;
+    };
+    QImage result(width,400,QImage::Format_ARGB32_Premultiplied);
+    result.fill(Qt::white);
+    drawHorizontalLines(result,10,200,mapHeight);
+    QPainter painter(&result);
+    boost::local_time::local_date_time currentTimeBarrier(
+        _records[0]->localDatetime().local_time().date(),
+        boost::posix_time::minutes(minutesPerPixel),
+        _timeZonePtr,
+        boost::local_time::local_date_time::EXCEPTION_ON_ERROR);
+    std::size_t currentWidth=0;
+    QPainterPath pulsePath;
+    bool started=false;
+    std::size_t density=0;
+    for(auto i=_records.begin(),e=_records.end(); i!=e;)
+    {
+        if((*i)->localDatetime()<currentTimeBarrier)
+        {
+            // Include this record in this point
+            if(started)
+                pulsePath.lineTo(currentWidth,mapHeight((*i)->pulse()));
+            else
+            {
+                started=true;
+                pulsePath.moveTo(currentWidth,mapHeight((*i)->pulse()));
+            }
+            ++i;
+            ++density;
+            if(density>2)
+                std::cerr<<"Pulse chart is dense at "<<currentWidth<<" time: "<<(*i)->localDatetime()<<'\n';
+        }
+        else
+        {
+            // shift one pixel right and try again
+            currentTimeBarrier+=boost::posix_time::minutes(minutesPerPixel);
+            ++currentWidth;
+            density=0;
+        }
+    }
+    painter.drawPath(pulsePath.subtracted(QPainterPath()));
+    return result;
+}
+
 
 #include "MasterModel.moc"

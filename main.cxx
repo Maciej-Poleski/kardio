@@ -5,6 +5,9 @@
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QTableView>
 #include <QtWidgets/QHeaderView>
+#include <QtWidgets/QLabel>
+#include <QtWidgets/QScrollArea>
+#include <QtGui/QImage>
 
 #include "src/MasterModel.hxx"
 
@@ -23,6 +26,15 @@ int main(int argc, char **argv) {
     view->setSelectionBehavior(QAbstractItemView::SelectRows);
     view->show();
     view->scrollTo(model->index(model->rowCount()-1,0));
+
+    QLabel *chartLabel=new QLabel();
+    chartLabel->setPixmap(QPixmap::fromImage(model->getChartAsImage()));
+
+    QScrollArea *chartWidget=new QScrollArea();
+    chartWidget->setWidget(chartLabel);
+    chartWidget->setMinimumHeight(chartLabel->sizeHint().height()+16); // TODO: do it better
+    chartWidget->resize(1000,chartLabel->sizeHint().height()+16);
+    chartWidget->show();
 
     app.exec();
     return 0;

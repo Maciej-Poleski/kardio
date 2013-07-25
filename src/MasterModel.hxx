@@ -17,6 +17,8 @@
 
 #include "Record.hxx"
 
+class QImage;
+
 class MasterModel : public QAbstractTableModel
 {
     Q_OBJECT
@@ -27,6 +29,8 @@ public:
     MasterModel(MasterModel &&) = delete;
 
     void loadFromFile(const std::string& filename);
+
+    QImage getChartAsImage() const;
 
     virtual int columnCount(const QModelIndex& parent = QModelIndex()) const override;
     virtual QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
