@@ -360,7 +360,7 @@ QImage MasterModel::getChartAsImage() const
         _timeZonePtr,
         boost::local_time::local_date_time::EXCEPTION_ON_ERROR);
     std::size_t currentWidth=0;
-    QPainterPath pulsePath;
+    QPainterPath pulsePath,maxRatePath,minRatePath;
     bool started=false;
     std::size_t density=0;
     for(auto i=_records.begin(),e=_records.end(); i!=e;)
@@ -369,16 +369,23 @@ QImage MasterModel::getChartAsImage() const
         {
             // Include this record in this point
             if(started)
+            {
                 pulsePath.lineTo(currentWidth,mapHeight((*i)->pulse()));
+                maxRatePath.lineTo(currentWidth,mapHeight((*i)->maxRate()));
+                minRatePath.lineTo(currentWidth,mapHeight((*i)->minRate()));
+            }
             else
             {
                 started=true;
                 pulsePath.moveTo(currentWidth,mapHeight((*i)->pulse()));
+                maxRatePath.moveTo(currentWidth,mapHeight((*i)->maxRate()));
+                minRatePath.moveTo(currentWidth,mapHeight((*i)->minRate()));
             }
             ++i;
             ++density;
-            if(density>2)
-                std::cerr<<"Pulse chart is dense at "<<currentWidth<<" time: "<<(*i)->localDatetime()<<'\n';
+            if(density>1)
+                std::cerr<<"Chart is dense at "<<currentWidth<<", time: "
+                         <<(*i)->localDatetime()<<'\n';
         }
         else
         {
@@ -388,7 +395,9 @@ QImage MasterModel::getChartAsImage() const
             density=0;
         }
     }
-    painter.drawPath(pulsePath.subtracted(QPainterPath()));
+    painter.drawPath(pulsePath);
+    painter.drawPath(maxRatePath);
+    painter.drawPath(minRatePath);
     return result;
 }
 
